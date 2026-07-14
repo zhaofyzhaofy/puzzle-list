@@ -38,7 +38,10 @@ export default function SelectUser() {
   const [creating, setCreating] = useState(false)
   const [deletingProfile, setDeletingProfile] = useState(null) // 正在删除的成员ID
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null) // 确认删除弹窗
+  const [changingAvatarId, setChangingAvatarId] = useState(null) // 正在换头像的成员ID
   const fileInputRef = useRef(null)
+  const changeAvatarInputRef = useRef(null) // 换头像用的隐藏 file input
+  const changeAvatarTargetRef = useRef(null) // 记录点击"换头像"的成员ID
   const { selectUser } = useUser()
   const navigate = useNavigate()
 
@@ -153,9 +156,66 @@ export default function SelectUser() {
     setShowDeleteConfirm(profileId)
   }
 
+  // 点击"换头像"按钮
+  function handleChangeAvatarClick(profileId, e) {
+    e.stopPropagation()
+    changeAvatarTargetRef.current = profileId
+    changeAvatarInputRef.current?.click()
+  }
+
+  // 选择新头像文件后立即上传并更新
+  async function handleChangeAvatarFile(e) {
+    const file = e.target.files?.[0]
+    // 清空 input 值，方便下次选同一文件也能触发
+    e.target.value = ''
+    const profileId = changeAvatarTargetRef.current
+    if (!file || !profileId) return
+    if (file.size > 20 * 1024 * 1024) {
+      alert('图片不能超过 20MB')
+      return
+    }
+
+    setChangingAvatarId(profileId)
+    try {
+      const ext = file.name.split('.').pop()
+      const path = `${profileId}.${ext}`
+      const { error: upErr } = await supabase.storage
+        .from('avatars')
+        .upload(path, file, { upsert: true, contentType: file.type })
+      if (upErr) {
+        alert(`头像上传失败：${upErr.message}`)
+        return
+      }
+      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+      const newUrl = urlData.publicUrl + '?t=' + Date.now()
+
+      const { error: updErr } = await supabase
+        .from('profiles')
+        .update({ avatar_url: newUrl })
+        .eq('id', profileId)
+      if (updErr) {
+        alert(`更新头像失败：${updErr.message}`)
+        return
+      }
+      setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, avatar_url: newUrl } : p))
+    } finally {
+      setChangingAvatarId(null)
+      changeAvatarTargetRef.current = null
+    }
+  }
+
   return (
     <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-6"
       style={{ background: 'linear-gradient(135deg, #fff8ed 0%, #fff3e0 40%, #fce4ec 100%)' }}>
+
+      {/* 换头像隐藏 input */}
+      <input
+        ref={changeAvatarInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleChangeAvatarFile}
+      />
 
       {/* 背景装饰 */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
@@ -203,10 +263,24 @@ export default function SelectUser() {
                     className="flex flex-col items-center p-4 bg-white rounded-2xl shadow-sm hover:shadow-orange transition-all hover:-translate-y-1 active:scale-95 cursor-pointer border-2 border-transparent hover:border-orange-200 w-full"
                     style={{ animationDelay: `${i * 0.08}s` }}
                   >
-                    <div className="w-14 h-14 mb-2 flex-shrink-0">
+                    <div className="w-14 h-14 mb-2 flex-shrink-0 relative">
                       <Avatar profile={profile} size="md" />
+                      {changingAvatarId === profile.id && (
+                        <div className="absolute inset-0 rounded-2xl bg-black/40 flex items-center justify-center">
+                          <span className="text-white text-[10px] font-bold">上传中</span>
+                        </div>
+                      )}
                     </div>
                     <span className="text-xs font-bold text-gray-700 truncate w-full text-center leading-tight">{profile.name}</span>
+                  </button>
+                  {/* 换头像按钮 */}
+                  <button
+                    onClick={(e) => handleChangeAvatarClick(profile.id, e)}
+                    disabled={changingAvatarId === profile.id}
+                    title="换头像"
+                    className="absolute -top-1 -left-1 w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-orange-600 disabled:opacity-50"
+                  >
+                    <Camera className="w-3 h-3" />
                   </button>
                   {/* 删除按钮 */}
                   <button
