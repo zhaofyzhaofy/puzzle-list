@@ -14,10 +14,12 @@ const STATUS_FILTERS = [
 
 export default function PuzzleList() {
   const [puzzles, setPuzzles] = useState([])
+  const [profiles, setProfiles] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchText, setSearchText] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [creatorFilter, setCreatorFilter] = useState('all')
   const [badgeCount, setBadgeCount] = useState(0)
   const [deletingPuzzle, setDeletingPuzzle] = useState(null) // 正在删除的谜题ID
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null) // 确认删除弹窗
@@ -27,6 +29,7 @@ export default function PuzzleList() {
   useEffect(() => {
     if (!currentUser) { navigate('/'); return }
     loadPuzzles()
+    loadProfiles()
     loadBadgeCount()
   }, [currentUser, navigate])
 
@@ -34,10 +37,18 @@ export default function PuzzleList() {
     setLoading(true)
     const { data } = await supabase
       .from('puzzles')
-      .select('*, profiles(name, avatar_emoji)')
+      .select('*, profiles(name, avatar_emoji, avatar_url)')
       .order('created_at', { ascending: false })
     setPuzzles(data || [])
     setLoading(false)
+  }
+
+  async function loadProfiles() {
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, name, avatar_emoji, avatar_url')
+      .order('created_at')
+    setProfiles(data || [])
   }
 
   async function loadBadgeCount() {
@@ -71,7 +82,8 @@ export default function PuzzleList() {
     const matchSearch = p.title.toLowerCase().includes(searchText.toLowerCase())
     const matchCat = categoryFilter === 'all' || p.category === categoryFilter
     const matchStatus = statusFilter === 'all' || p.status === statusFilter
-    return matchSearch && matchCat && matchStatus
+    const matchCreator = creatorFilter === 'all' || p.creator_id === creatorFilter
+    return matchSearch && matchCat && matchStatus && matchCreator
   })
 
   if (!currentUser) return null
@@ -145,7 +157,7 @@ export default function PuzzleList() {
         </div>
 
         {/* 分类筛选 */}
-        <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
+        <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
           <button
             onClick={() => setCategoryFilter('all')}
             className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all ${
@@ -170,6 +182,45 @@ export default function PuzzleList() {
               <span>{cat.label}</span>
             </button>
           ))}
+        </div>
+
+        {/* 创建人筛选 */}
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-1">
+          <button
+            onClick={() => setCreatorFilter('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1 ${
+              creatorFilter === 'all'
+                ? 'bg-gray-700 text-white'
+                : 'bg-white text-gray-500 shadow-sm hover:bg-gray-50'
+            }`}
+          >
+            <span>👥</span>
+            <span>所有人</span>
+          </button>
+          {profiles.map(p => {
+            const active = creatorFilter === p.id
+            return (
+              <button
+                key={p.id}
+                onClick={() => setCreatorFilter(p.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                  active
+                    ? 'text-white shadow-orange scale-105'
+                    : 'bg-white text-gray-500 shadow-sm hover:bg-gray-50'
+                }`}
+                style={active ? {background: 'linear-gradient(135deg, #ff9a3c, #ff6b35)'} : {}}
+              >
+                <span className="w-4 h-4 rounded-md overflow-hidden inline-flex items-center justify-center flex-shrink-0"
+                  style={{background: 'linear-gradient(135deg, #fff3e0, #fce4ec)'}}>
+                  {p.avatar_url
+                    ? <img src={p.avatar_url} alt="" className="w-full h-full object-cover" />
+                    : <span className="text-[10px]">{p.avatar_emoji || '👤'}</span>
+                  }
+                </span>
+                <span>{p.name}</span>
+              </button>
+            )
+          })}
         </div>
 
         {/* 谜题列表 */}
