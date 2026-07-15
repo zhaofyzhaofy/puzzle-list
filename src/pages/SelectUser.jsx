@@ -257,7 +257,7 @@ export default function SelectUser() {
             )}
             <div className="grid grid-cols-3 gap-3 mb-4">
               {profiles.map((profile, i) => (
-                <div key={profile.id} className="relative group animate-slide-up">
+                <div key={profile.id} className="relative animate-slide-up pt-2 pr-2">
                   <button
                     onClick={() => handleSelect(profile)}
                     className="flex flex-col items-center p-4 bg-white rounded-2xl shadow-sm hover:shadow-orange transition-all hover:-translate-y-1 active:scale-95 cursor-pointer border-2 border-transparent hover:border-orange-200 w-full"
@@ -273,22 +273,25 @@ export default function SelectUser() {
                     </div>
                     <span className="text-xs font-bold text-gray-700 truncate w-full text-center leading-tight">{profile.name}</span>
                   </button>
-                  {/* 换头像按钮 */}
+                  {/* 换头像按钮（始终可见，兼容手机端） */}
                   <button
                     onClick={(e) => handleChangeAvatarClick(profile.id, e)}
                     disabled={changingAvatarId === profile.id}
                     title="换头像"
-                    className="absolute -top-1 -left-1 w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-orange-600 disabled:opacity-50"
+                    aria-label="换头像"
+                    className="absolute top-0 left-0 w-7 h-7 rounded-full bg-orange-500 text-white flex items-center justify-center shadow-md hover:bg-orange-600 active:scale-90 transition-all disabled:opacity-50 z-10"
                   >
-                    <Camera className="w-3 h-3" />
+                    <Camera className="w-3.5 h-3.5" />
                   </button>
-                  {/* 删除按钮 */}
+                  {/* 删除按钮（始终可见，兼容手机端） */}
                   <button
                     onClick={() => handleDeleteProfile(profile.id)}
                     disabled={deletingProfile === profile.id}
-                    className="absolute -top-1 -right-1 w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 disabled:opacity-50"
+                    title="删除成员"
+                    aria-label="删除成员"
+                    className="absolute top-0 right-0 w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center shadow-md hover:bg-red-600 active:scale-90 transition-all disabled:opacity-50 z-10"
                   >
-                    <Trash2 className="w-3 h-3" />
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               ))}
