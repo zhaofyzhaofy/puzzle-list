@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../context/UserContext'
-import { BADGES, getCategoryById } from '../lib/constants'
+import { BADGES, CATEGORIES, getCategoryById } from '../lib/constants'
 import { ArrowLeft, CheckCircle, Send, Star, Trash2, AlertCircle, Pencil, Check, X } from 'lucide-react'
 import { Avatar } from './SelectUser'
 
@@ -24,6 +24,7 @@ export default function PuzzleDetail() {
   const [editingPuzzle, setEditingPuzzle] = useState(false)
   const [editTitle, setEditTitle] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editCategory, setEditCategory] = useState('other')
   const [savingPuzzle, setSavingPuzzle] = useState(false)
   // 编辑想法
   const [editingReplyId, setEditingReplyId] = useState(null)
@@ -119,20 +120,31 @@ export default function PuzzleDetail() {
   function startEditPuzzle() {
     setEditTitle(puzzle.title)
     setEditDescription(puzzle.description || '')
+    setEditCategory(puzzle.category || 'other')
     setEditingPuzzle(true)
   }
 
   async function saveEditPuzzle() {
     if (!editTitle.trim()) return
     setSavingPuzzle(true)
+    const nextCategory = editCategory || 'other'
     const { error } = await supabase
       .from('puzzles')
-      .update({ title: editTitle.trim(), description: editDescription.trim() || null })
+      .update({
+        title: editTitle.trim(),
+        description: editDescription.trim() || null,
+        category: nextCategory,
+      })
       .eq('id', id)
     if (error) {
       alert('保存失败，请重试')
     } else {
-      setPuzzle(prev => ({ ...prev, title: editTitle.trim(), description: editDescription.trim() || null }))
+      setPuzzle(prev => ({
+        ...prev,
+        title: editTitle.trim(),
+        description: editDescription.trim() || null,
+        category: nextCategory,
+      }))
       setEditingPuzzle(false)
     }
     setSavingPuzzle(false)
@@ -263,6 +275,31 @@ export default function PuzzleDetail() {
                   placeholder="补充描述（选填）"
                   rows={3}
                 />
+                {/* 分类（标签类型）选择 */}
+                <div>
+                  <p className="text-xs font-bold text-gray-400 mb-1.5">标签类型</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {CATEGORIES.map(c => {
+                      const active = editCategory === c.id
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => setEditCategory(c.id)}
+                          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border-2 text-xs font-bold transition-all ${
+                            active
+                              ? `${c.color} ${c.border} shadow-sm`
+                              : 'bg-white border-gray-100 text-gray-500 hover:border-gray-200'
+                          }`}
+                        >
+                          <span>{c.emoji}</span>
+                          <span>{c.label}</span>
+                          {active && <span className="ml-0.5">✓</span>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
                 <div className="flex gap-2 justify-end">
                   <button
                     onClick={() => setEditingPuzzle(false)}
