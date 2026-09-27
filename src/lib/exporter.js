@@ -1,28 +1,17 @@
-import { supabase } from '../lib/supabase'
+import { exportAll, importAll } from './db'
 import { CATEGORIES, BADGES } from './constants'
 
-// 一次性把家庭里所有数据导出。
-// 家长关心留档 —— 把 profiles / puzzles / replies / badges 全拉下来，本地生成 blob 下载。
-// 支持两种格式：json（完整结构） 和 markdown（人类可读、可打印，适合当孩子成长档案）。
+// 数据导入导出。
+// 数据本来就存在浏览器本地，导出只是把它整理成一份可下载的文件：
+// json（完整结构，可再导入恢复）和 markdown（人类可读、可打印，适合当孩子的成长档案）。
 
-export async function fetchAllData() {
-  const [profilesRes, puzzlesRes, repliesRes, badgesRes] = await Promise.all([
-    supabase.from('profiles').select('*').order('created_at'),
-    supabase.from('puzzles').select('*').order('created_at'),
-    supabase.from('replies').select('*').order('created_at'),
-    supabase.from('badges').select('*').order('earned_at'),
-  ])
+export function fetchAllData() {
+  return exportAll()
+}
 
-  const firstError = [profilesRes, puzzlesRes, repliesRes, badgesRes].find(r => r.error)
-  if (firstError) throw firstError.error
-
-  return {
-    exported_at: new Date().toISOString(),
-    profiles: profilesRes.data || [],
-    puzzles: puzzlesRes.data || [],
-    replies: repliesRes.data || [],
-    badges: badgesRes.data || [],
-  }
+// 从备份文本恢复数据。mode='replace' 覆盖本地全部数据，mode='merge' 按 id 合并
+export function importFromJSONText(text, { mode = 'replace' } = {}) {
+  return importAll(JSON.parse(text), { mode })
 }
 
 function downloadBlob(content, mime, filename) {

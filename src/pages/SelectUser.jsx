@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { createProfile as createProfileInDb, deleteProfile as deleteProfileInDb, updateProfile } from '../lib/db'
 import { useUser } from '../context/UserContext'
 import { Plus, Sparkles, X, Camera, User, Trash2 } from 'lucide-react'
 import Avatar from '../components/Avatar'
 import ConfirmDialog from '../components/ConfirmDialog'
+import ImportButton from '../components/ImportButton'
 import Loading from '../components/Loading'
 import { useProfiles } from '../hooks/useProfiles'
 
@@ -40,18 +41,27 @@ export default function SelectUser() {
     setAvatarPreview(URL.createObjectURL(file))
   }
 
-  async function uploadAvatarTo(profileId, file) {
-    const ext = file.name.split('.').pop()
-    const path = `${profileId}.${ext}`
-    const { error } = await supabase.storage
-      .from('avatars')
-      .upload(path, file, { upsert: true, contentType: file.type })
-    if (error) {
-      alert(`头像上传失败：${error.message}`)
-      return null
-    }
-    const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-    return data.publicUrl + '?t=' + Date.now()
+  // 把选中的图片压缩成小尺寸 JPEG 再转 base64 存进本地。
+  // 直接存原图会迅速撑爆 localStorage（容量约 5MB），所以必须先压缩。
+  function compressImage(file, maxSize = 256, quality = 0.85) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const img = new Image()
+        img.onload = () => {
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
+          const canvas = document.createElement('canvas')
+          canvas.width = Math.round(img.width * scale)
+          canvas.height = Math.round(img.height * scale)
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+          resolve(canvas.toDataURL('image/jpeg', quality))
+        }
+        img.onerror = () => reject(new Error('图片解析失败'))
+        img.src = reader.result
+      }
+      reader.onerror = () => reject(new Error('图片读取失败'))
+      reader.readAsDataURL(file)
+    })
   }
 
   async function createProfile() {
@@ -59,30 +69,18 @@ export default function SelectUser() {
     if (!avatarFile) { alert('请选择一张头像图片'); return }
     setCreating(true)
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .insert({ name: newName.trim() })
-      .select()
-      .single()
+    try {
+      setUploading(true)
+      const avatarUrl = await compressImage(avatarFile)
+      setUploading(false)
 
-    if (error || !data) {
-      alert(`创建成员失败：${error?.message || '未知错误'}`)
-      setCreating(false)
-      return
+      const data = createProfileInDb({ name: newName.trim(), avatar_url: avatarUrl })
+      setProfiles(prev => [...prev, data])
+      resetForm()
+      handleSelect(data)
+    } catch (err) {
+      alert(`创建成员失败：${err.message}`)
     }
-
-    setUploading(true)
-    const avatarUrl = await uploadAvatarTo(data.id, avatarFile)
-    setUploading(false)
-
-    if (avatarUrl) {
-      await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', data.id)
-      data.avatar_url = avatarUrl
-    }
-
-    setProfiles(prev => [...prev, data])
-    resetForm()
-    handleSelect(data)
     setCreating(false)
   }
 
@@ -108,14 +106,14 @@ export default function SelectUser() {
    * @param {string} profileId - 要删除的用户 ID
    * @returns {Promise<void>}
    */
-  async function deleteProfile(profileId) {
+  function deleteProfile(profileId) {
     setDeletingProfile(profileId)
-    const { error } = await supabase.from('profiles').delete().eq('id', profileId)
-    if (error) {
-      alert(`删除失败：${error.message}`)
-    } else {
+    try {
+      deleteProfileInDb(profileId)
       setProfiles(prev => prev.filter(p => p.id !== profileId))
       setShowDeleteConfirm(null)
+    } catch (err) {
+      alert(`删除失败：${err.message}`)
     }
     setDeletingProfile(null)
   }
@@ -138,17 +136,11 @@ export default function SelectUser() {
 
     setChangingAvatarId(profileId)
     try {
-      const newUrl = await uploadAvatarTo(profileId, file)
-      if (!newUrl) return
-      const { error } = await supabase
-        .from('profiles')
-        .update({ avatar_url: newUrl })
-        .eq('id', profileId)
-      if (error) {
-        alert(`更新头像失败：${error.message}`)
-        return
-      }
+      const newUrl = await compressImage(file)
+      updateProfile(profileId, { avatar_url: newUrl })
       setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, avatar_url: newUrl } : p))
+    } catch (err) {
+      alert(`更新头像失败：${err.message}`)
     } finally {
       setChangingAvatarId(null)
       changeAvatarTargetRef.current = null
@@ -253,6 +245,11 @@ export default function SelectUser() {
             {profiles.length === 0 && (
               <p className="text-center text-gray-400 text-sm mt-2">还没有成员，点击上面的按钮开始吧！</p>
             )}
+
+            {/* 换设备 / 清缓存后，用备份文件把数据搬回来 */}
+            <div className="text-center mt-7">
+              <ImportButton className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-white/70 text-gray-500 text-xs font-semibold shadow-sm hover:bg-white hover:text-orange-500 transition-colors disabled:opacity-50" />
+            </div>
           </>
         )}
       </div>

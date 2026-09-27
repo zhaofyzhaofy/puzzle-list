@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { updateReply } from '../lib/db'
 import { Pencil, Check, X } from 'lucide-react'
 import Avatar from './Avatar'
 
@@ -9,16 +9,16 @@ export default function ReplyItem({ reply, isMine, index, onUpdated }) {
   const [content, setContent] = useState(reply.content)
   const [saving, setSaving] = useState(false)
 
-  async function save() {
+  function save() {
     if (!content.trim()) return
     setSaving(true)
     const next = content.trim()
-    const { error } = await supabase.from('replies').update({ content: next }).eq('id', reply.id)
-    if (error) {
-      alert('保存失败，请重试')
-    } else {
+    try {
+      updateReply(reply.id, { content: next })
       onUpdated?.(next)
       setEditing(false)
+    } catch {
+      alert('保存失败，请重试')
     }
     setSaving(false)
   }

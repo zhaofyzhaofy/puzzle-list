@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { createBadge, createReply, deletePuzzle as deletePuzzleFromDb, updatePuzzle } from '../lib/db'
 import { useUser } from '../context/UserContext'
 import { BADGES, getCategoryById } from '../lib/constants'
 import { ArrowLeft, Send, Star } from 'lucide-react'
@@ -28,53 +28,43 @@ export default function PuzzleDetail() {
     if (!currentUser) navigate('/')
   }, [currentUser, navigate])
 
-  async function submitReply() {
+  function submitReply() {
     if (!newReply.trim()) return
     setSubmitting(true)
     const content = newReply.trim()
     setNewReply('')
-    const { data, error: err } = await supabase
-      .from('replies')
-      .insert({ puzzle_id: id, author_id: currentUser.id, content })
-      .select('*, profiles(name, avatar_emoji, avatar_url)')
-      .single()
-    if (err) {
+    try {
+      const created = createReply({ puzzle_id: id, author_id: currentUser.id, content })
+      // 本地订阅也会触发整体刷新，这里先乐观插入，按 id 去重避免重复
+      setReplies(prev => prev.some(r => r.id === created.id) ? prev : [...prev, created])
+    } catch {
       setNewReply(content)
       alert('发送失败，请重试')
-    } else if (data) {
-      // realtime 也会推送新记录，去重后再插入
-      setReplies(prev => prev.some(r => r.id === data.id) ? prev : [...prev, data])
     }
     setSubmitting(false)
   }
 
-  async function markSolved() {
+  function markSolved() {
     if (!puzzle || puzzle.status === 'solved') return
-    const { error: err } = await supabase
-      .from('puzzles')
-      .update({ status: 'solved', solved_at: new Date().toISOString() })
-      .eq('id', id)
-    if (err) {
+    const badgeType = puzzle.category
+    try {
+      updatePuzzle(id, { status: 'solved', solved_at: new Date().toISOString() })
+      createBadge({ user_id: puzzle.creator_id, badge_type: badgeType, puzzle_id: id })
+    } catch {
       alert('操作失败，请重试')
       return
     }
-    const badgeType = puzzle.category
-    await supabase.from('badges').insert({
-      user_id: puzzle.creator_id,
-      badge_type: badgeType,
-      puzzle_id: id,
-    })
     setPuzzle(prev => prev ? { ...prev, status: 'solved' } : prev)
     setShowBadge(BADGES[badgeType])
   }
 
-  async function deletePuzzle() {
+  function deletePuzzle() {
     setDeleting(true)
-    const { error: err } = await supabase.from('puzzles').delete().eq('id', id)
-    if (err) {
-      alert(`删除失败：${err.message}`)
-    } else {
+    try {
+      deletePuzzleFromDb(id)
       navigate('/puzzles')
+    } catch (err) {
+      alert(`删除失败：${err.message}`)
     }
     setDeleting(false)
     setShowDeleteConfirm(false)

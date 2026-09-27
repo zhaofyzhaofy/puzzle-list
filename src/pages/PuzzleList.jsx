@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { deletePuzzle as deletePuzzleFromDb } from '../lib/db'
 import { useUser } from '../context/UserContext'
 import { CATEGORIES, getCategoryById } from '../lib/constants'
 import { Plus, Search, Trophy, LogOut, Trash2 } from 'lucide-react'
@@ -39,14 +39,14 @@ export default function PuzzleList() {
     if (!currentUser) navigate('/')
   }, [currentUser, navigate])
 
-  async function deletePuzzle(puzzleId) {
+  function deletePuzzle(puzzleId) {
     setDeletingPuzzle(puzzleId)
-    const { error } = await supabase.from('puzzles').delete().eq('id', puzzleId)
-    if (error) {
-      alert(`删除失败：${error.message}`)
-    } else {
+    try {
+      deletePuzzleFromDb(puzzleId)
       setPuzzles(prev => prev.filter(p => p.id !== puzzleId))
       setShowDeleteConfirm(null)
+    } catch (err) {
+      alert(`删除失败：${err.message}`)
     }
     setDeletingPuzzle(null)
   }

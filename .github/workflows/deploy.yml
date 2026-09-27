@@ -30,10 +30,6 @@ jobs:
 
       - name: Build
         run: npm run build
-        env:
-          # 来自仓库 Secrets：Settings → Secrets and variables → Actions
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
       # GitHub Pages 对未知路径返回 404.html。
       # 复制一份 index.html 过去，SPA 才能在刷新 / 直达子路由时正常加载。

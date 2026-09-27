@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { createPuzzle as createPuzzleInDb } from '../lib/db'
 import { useUser } from '../context/UserContext'
 import { CATEGORIES } from '../lib/constants'
 import { ArrowLeft } from 'lucide-react'
@@ -18,23 +18,18 @@ export default function NewPuzzle() {
     if (!currentUser) navigate('/')
   }, [currentUser, navigate])
 
-  async function createPuzzle() {
+  function createPuzzle() {
     if (!title.trim()) return
     setSubmitting(true)
-    const { data, error } = await supabase
-      .from('puzzles')
-      .insert({
+    try {
+      const created = createPuzzleInDb({
         creator_id: currentUser.id,
         title: title.trim(),
         description: description.trim() || null,
         category,
-        status: 'exploring',
       })
-      .select()
-      .single()
-    if (!error && data) {
-      navigate(`/puzzles/${data.id}`)
-    } else if (error) {
+      navigate(`/puzzles/${created.id}`)
+    } catch {
       alert('创建失败，请重试')
     }
     setSubmitting(false)

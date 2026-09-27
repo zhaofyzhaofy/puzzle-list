@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { updatePuzzle } from '../lib/db'
 import { CATEGORIES } from '../lib/constants'
 import { Pencil, Trash2, CheckCircle, Check, X } from 'lucide-react'
 import Avatar from './Avatar'
@@ -21,7 +21,7 @@ export default function PuzzleCard({ puzzle, isOwner, onSolved, onDelete, onUpda
     setEditing(true)
   }
 
-  async function save() {
+  function save() {
     if (!editTitle.trim()) return
     setSaving(true)
     const next = {
@@ -29,12 +29,12 @@ export default function PuzzleCard({ puzzle, isOwner, onSolved, onDelete, onUpda
       description: editDescription.trim() || null,
       category: editCategory || 'other',
     }
-    const { error } = await supabase.from('puzzles').update(next).eq('id', puzzle.id)
-    if (error) {
-      alert('保存失败，请重试')
-    } else {
+    try {
+      updatePuzzle(puzzle.id, next)
       onUpdated?.(next)
       setEditing(false)
+    } catch {
+      alert('保存失败，请重试')
     }
     setSaving(false)
   }

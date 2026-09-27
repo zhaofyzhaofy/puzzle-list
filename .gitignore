@@ -15,6 +15,9 @@ dist-ssr
 # Comate 本地记忆文件（个人上下文，不入库）
 memory/
 
+# 数据备份（含家庭真实数据，绝不能入库）
+backup/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
