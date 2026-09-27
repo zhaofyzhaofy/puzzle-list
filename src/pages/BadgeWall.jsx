@@ -1,31 +1,22 @@
-import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
 import { useUser } from '../context/UserContext'
 import { BADGES } from '../lib/constants'
 import { ArrowLeft, Trophy } from 'lucide-react'
-import { Avatar } from './SelectUser'
+import Avatar from '../components/Avatar'
+import Loading from '../components/Loading'
+import { useBadges } from '../hooks/useBadges'
+import { useEffect } from 'react'
 
 export default function BadgeWall() {
   const navigate = useNavigate()
   const { currentUser } = useUser()
-  const [badges, setBadges] = useState([])
-  const [loading, setLoading] = useState(true)
+  const { badges, loading } = useBadges(currentUser?.id)
 
   useEffect(() => {
-    if (!currentUser) { navigate('/'); return }
-    loadBadges()
+    if (!currentUser) navigate('/')
   }, [currentUser, navigate])
 
-  async function loadBadges() {
-    const { data } = await supabase
-      .from('badges')
-      .select('*')
-      .eq('user_id', currentUser.id)
-      .order('earned_at', { ascending: false })
-    setBadges(data || [])
-    setLoading(false)
-  }
+  if (!currentUser) return null
 
   const badgeCounts = badges.reduce((acc, b) => {
     acc[b.badge_type] = (acc[b.badge_type] || 0) + 1
@@ -37,7 +28,6 @@ export default function BadgeWall() {
   return (
     <div className="min-h-screen pb-10" style={{background: 'linear-gradient(180deg, #fffbeb 0%, #fff8e1 100%)'}}>
 
-      {/* 顶部 */}
       <div className="sticky top-0 z-10 glass border-b border-yellow-100/60 px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
           <button onClick={() => navigate('/puzzles')}
@@ -51,10 +41,8 @@ export default function BadgeWall() {
 
       <div className="max-w-2xl mx-auto px-4 py-6">
 
-        {/* 用户信息卡 */}
         <div className="rounded-3xl p-6 text-center mb-6 relative overflow-hidden"
           style={{background: 'linear-gradient(135deg, #ffd700 0%, #ff9a3c 50%, #ff6b35 100%)'}}>
-          {/* 背景装饰 */}
           <div className="absolute inset-0 opacity-10">
             {['⭐','🌟','✨','💫','⭐','🌟'].map((s, i) => (
               <span key={i} className="absolute text-3xl" style={{
@@ -75,12 +63,9 @@ export default function BadgeWall() {
         </div>
 
         {loading ? (
-          <div className="text-center py-10">
-            <div className="text-4xl animate-float">🏆</div>
-          </div>
+          <Loading emoji="🏆" text="勋章加载中..." />
         ) : (
           <>
-            {/* 勋章展示网格：始终展示全部勋章，已获得亮显，未获得灰显 */}
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider">勋章收藏</h3>
               <span className="text-xs font-bold text-gray-400">
@@ -142,7 +127,6 @@ export default function BadgeWall() {
               </div>
             ) : (
               <>
-                {/* 获得记录 */}
                 <h3 className="text-xs font-black text-gray-400 uppercase tracking-wider mb-3">获得记录</h3>
                 <div className="flex flex-col gap-2">
                   {badges.slice(0, 10).map((badge, i) => {

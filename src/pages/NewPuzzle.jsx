@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useUser } from '../context/UserContext'
 import { CATEGORIES } from '../lib/constants'
 import { ArrowLeft } from 'lucide-react'
+// 保持文件独立性，未使用共享 hook（这里只有一次性插入）
 
 export default function NewPuzzle() {
   const navigate = useNavigate()

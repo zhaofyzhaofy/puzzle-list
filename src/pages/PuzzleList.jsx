@@ -1,10 +1,18 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../context/UserContext'
 import { CATEGORIES, getCategoryById } from '../lib/constants'
-import { Plus, Search, Trophy, LogOut, Trash2, AlertCircle } from 'lucide-react'
-import { Avatar } from './SelectUser'
+import { Plus, Search, Trophy, LogOut, Trash2 } from 'lucide-react'
+import Avatar from '../components/Avatar'
+import ConfirmDialog from '../components/ConfirmDialog'
+import Loading from '../components/Loading'
+import EmptyState from '../components/EmptyState'
+import ExportButton from '../components/ExportButton'
+import { StatusBadge } from '../components/CategoryTag'
+import { usePuzzles } from '../hooks/usePuzzles'
+import { useProfiles } from '../hooks/useProfiles'
+import { useBadgeCount } from '../hooks/useBadges'
 
 const STATUS_FILTERS = [
   { id: 'all', label: '全部', emoji: '🌍' },
@@ -13,58 +21,27 @@ const STATUS_FILTERS = [
 ]
 
 export default function PuzzleList() {
-  const [puzzles, setPuzzles] = useState([])
-  const [profiles, setProfiles] = useState([])
-  const [loading, setLoading] = useState(true)
+  const { currentUser, logout } = useUser()
+  const navigate = useNavigate()
+
+  const { puzzles, loading, setPuzzles } = usePuzzles()
+  const { profiles } = useProfiles()
+  const { count: badgeCount } = useBadgeCount(currentUser?.id)
+
   const [searchText, setSearchText] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [creatorFilter, setCreatorFilter] = useState('all')
-  const [badgeCount, setBadgeCount] = useState(0)
-  const [deletingPuzzle, setDeletingPuzzle] = useState(null) // 正在删除的谜题ID
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null) // 确认删除弹窗
-  const { currentUser, logout } = useUser()
-  const navigate = useNavigate()
+  const [deletingPuzzle, setDeletingPuzzle] = useState(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null)
 
   useEffect(() => {
-    if (!currentUser) { navigate('/'); return }
-    loadPuzzles()
-    loadProfiles()
-    loadBadgeCount()
+    if (!currentUser) navigate('/')
   }, [currentUser, navigate])
-
-  async function loadPuzzles() {
-    setLoading(true)
-    const { data } = await supabase
-      .from('puzzles')
-      .select('*, profiles(name, avatar_emoji, avatar_url)')
-      .order('created_at', { ascending: false })
-    setPuzzles(data || [])
-    setLoading(false)
-  }
-
-  async function loadProfiles() {
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, name, avatar_emoji, avatar_url')
-      .order('created_at')
-    setProfiles(data || [])
-  }
-
-  async function loadBadgeCount() {
-    const { count } = await supabase
-      .from('badges')
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', currentUser.id)
-    setBadgeCount(count || 0)
-  }
 
   async function deletePuzzle(puzzleId) {
     setDeletingPuzzle(puzzleId)
-    const { error } = await supabase
-      .from('puzzles')
-      .delete()
-      .eq('id', puzzleId)
+    const { error } = await supabase.from('puzzles').delete().eq('id', puzzleId)
     if (error) {
       alert(`删除失败：${error.message}`)
     } else {
@@ -74,17 +51,13 @@ export default function PuzzleList() {
     setDeletingPuzzle(null)
   }
 
-  function handleDeletePuzzle(puzzleId) {
-    setShowDeleteConfirm(puzzleId)
-  }
-
-  const filtered = puzzles.filter(p => {
+  const filtered = useMemo(() => puzzles.filter(p => {
     const matchSearch = p.title.toLowerCase().includes(searchText.toLowerCase())
     const matchCat = categoryFilter === 'all' || p.category === categoryFilter
     const matchStatus = statusFilter === 'all' || p.status === statusFilter
     const matchCreator = creatorFilter === 'all' || p.creator_id === creatorFilter
     return matchSearch && matchCat && matchStatus && matchCreator
-  })
+  }), [puzzles, searchText, categoryFilter, statusFilter, creatorFilter])
 
   if (!currentUser) return null
 
@@ -104,7 +77,7 @@ export default function PuzzleList() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* 勋章按钮 */}
+            <ExportButton />
             <button
               onClick={() => navigate('/badges')}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl font-bold text-sm transition-all hover:-translate-y-0.5 active:scale-95"
@@ -225,16 +198,13 @@ export default function PuzzleList() {
 
         {/* 谜题列表 */}
         {loading ? (
-          <div className="text-center py-16">
-            <div className="text-4xl animate-float mb-3">🔭</div>
-            <p className="text-gray-400 text-sm">正在加载谜题...</p>
-          </div>
+          <Loading emoji="🔭" text="正在加载谜题..." />
         ) : filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="text-5xl mb-4">🪐</div>
-            <p className="text-gray-500 font-bold text-lg mb-1">宇宙一片寂静</p>
-            <p className="text-gray-300 text-sm">点击右下角按钮，提出你的第一个谜题！</p>
-          </div>
+          <EmptyState
+            emoji="🪐"
+            title="宇宙一片寂静"
+            hint="点击右下角按钮，提出你的第一个谜题！"
+          />
         ) : (
           <div className="flex flex-col gap-3">
             {filtered.map((puzzle, i) => {
@@ -251,18 +221,13 @@ export default function PuzzleList() {
                     className="w-full text-left bg-white rounded-2xl p-4 shadow-sm hover:shadow-orange border-2 border-transparent hover:border-orange-100 transition-all hover:-translate-y-0.5 active:scale-[0.98] cursor-pointer"
                   >
                     <div className="flex items-start gap-3">
-                      {/* 分类图标 */}
                       <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-xl flex-shrink-0 ${cat.color}`}>
                         {cat.emoji}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${cat.color}`}>{cat.label}</span>
-                          {puzzle.status === 'solved' ? (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-600 font-semibold">✅ 已解答</span>
-                          ) : (
-                            <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-400 font-semibold">🔭 探索中</span>
-                          )}
+                          <StatusBadge status={puzzle.status} />
                         </div>
                         <p className="font-bold text-gray-800 text-sm line-clamp-2 mb-1.5 leading-snug">{puzzle.title}</p>
                         <div className="flex items-center gap-2 text-xs text-gray-400">
@@ -280,10 +245,9 @@ export default function PuzzleList() {
                       </div>
                     </div>
                   </button>
-                  {/* 删除按钮 */}
                   {isOwner && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleDeletePuzzle(puzzle.id); }}
+                      onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(puzzle.id) }}
                       disabled={deletingPuzzle === puzzle.id}
                       className="absolute top-2 right-2 w-7 h-7 rounded-lg bg-white shadow-sm border border-gray-100 text-red-400 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-50 hover:border-red-200 disabled:opacity-50"
                     >
@@ -309,37 +273,15 @@ export default function PuzzleList() {
         <Plus className="w-7 h-7" />
       </button>
 
-      {/* 删除确认弹窗 */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-slide-up">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                <AlertCircle className="text-red-500 w-5 h-5" />
-              </div>
-              <h2 className="text-lg font-black text-gray-800">确认删除</h2>
-            </div>
-            <p className="text-gray-600 text-sm mb-6 leading-relaxed">
-              确定要删除这个谜题吗？删除后，谜题的所有回复和相关勋章也会被删除，此操作无法撤销。
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowDeleteConfirm(null)}
-                className="flex-1 py-3 rounded-2xl bg-gray-100 text-gray-500 font-semibold hover:bg-gray-200 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => deletePuzzle(showDeleteConfirm)}
-                disabled={deletingPuzzle === showDeleteConfirm}
-                className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {deletingPuzzle === showDeleteConfirm ? '删除中...' : '确认删除'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!showDeleteConfirm}
+        title="确认删除"
+        message="确定要删除这个谜题吗？删除后，谜题的所有回复和相关勋章也会被删除，此操作无法撤销。"
+        confirmText="确认删除"
+        loading={deletingPuzzle === showDeleteConfirm}
+        onCancel={() => setShowDeleteConfirm(null)}
+        onConfirm={() => deletePuzzle(showDeleteConfirm)}
+      />
     </div>
   )
 }

@@ -1,65 +1,33 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useUser } from '../context/UserContext'
-import { Plus, Sparkles, X, Camera, User, Trash2, AlertCircle } from 'lucide-react'
+import { Plus, Sparkles, X, Camera, User, Trash2 } from 'lucide-react'
+import Avatar from '../components/Avatar'
+import ConfirmDialog from '../components/ConfirmDialog'
+import Loading from '../components/Loading'
+import { useProfiles } from '../hooks/useProfiles'
 
-// 头像显示组件：优先 avatar_url，降级 emoji，再降级占位
-function Avatar({ profile, size = 'md' }) {
-  const sizeClass = size === 'lg' ? 'w-20 h-20 text-4xl' : size === 'sm' ? 'w-9 h-9 text-lg' : 'w-14 h-14 text-3xl'
-  if (profile.avatar_url) {
-    return (
-      <img
-        src={profile.avatar_url}
-        alt={profile.name}
-        className={`${sizeClass} rounded-2xl object-cover`}
-      />
-    )
-  }
-  return (
-    <div className={`${sizeClass} rounded-2xl flex items-center justify-center`}
-      style={{ background: 'linear-gradient(135deg, #fff3e0, #fce4ec)' }}>
-      {profile.avatar_emoji || <User className="w-1/2 h-1/2 text-gray-300" />}
-    </div>
-  )
-}
-
-export { Avatar }
+// 向后兼容旧引用（尚未清理的其他页面还在从这里 import Avatar）
+export { default as Avatar } from '../components/Avatar'
 
 export default function SelectUser() {
-  const [profiles, setProfiles] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState(false)
+  const { profiles, loading, error: loadError, reload, setProfiles } = useProfiles()
+
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
-  const [avatarFile, setAvatarFile] = useState(null)       // File 对象
-  const [avatarPreview, setAvatarPreview] = useState(null) // 本地预览 URL
+  const [avatarFile, setAvatarFile] = useState(null)
+  const [avatarPreview, setAvatarPreview] = useState(null)
   const [uploading, setUploading] = useState(false)
   const [creating, setCreating] = useState(false)
-  const [deletingProfile, setDeletingProfile] = useState(null) // 正在删除的成员ID
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null) // 确认删除弹窗
-  const [changingAvatarId, setChangingAvatarId] = useState(null) // 正在换头像的成员ID
+  const [deletingProfile, setDeletingProfile] = useState(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(null)
+  const [changingAvatarId, setChangingAvatarId] = useState(null)
   const fileInputRef = useRef(null)
-  const changeAvatarInputRef = useRef(null) // 换头像用的隐藏 file input
-  const changeAvatarTargetRef = useRef(null) // 记录点击"换头像"的成员ID
+  const changeAvatarInputRef = useRef(null)
+  const changeAvatarTargetRef = useRef(null)
   const { selectUser } = useUser()
   const navigate = useNavigate()
-
-  useEffect(() => {
-    loadProfiles()
-  }, [])
-
-  async function loadProfiles() {
-    setLoading(true)
-    setLoadError(false)
-    const { data, error } = await supabase.from('profiles').select('*').order('created_at')
-    if (error) {
-      setLoadError(true)
-    } else {
-      setProfiles(data || [])
-    }
-    setLoading(false)
-  }
 
   function handleFileChange(e) {
     const file = e.target.files?.[0]
@@ -72,15 +40,13 @@ export default function SelectUser() {
     setAvatarPreview(URL.createObjectURL(file))
   }
 
-  async function uploadAvatar(profileId) {
-    if (!avatarFile) return null
-    const ext = avatarFile.name.split('.').pop()
+  async function uploadAvatarTo(profileId, file) {
+    const ext = file.name.split('.').pop()
     const path = `${profileId}.${ext}`
     const { error } = await supabase.storage
       .from('avatars')
-      .upload(path, avatarFile, { upsert: true, contentType: avatarFile.type })
+      .upload(path, file, { upsert: true, contentType: file.type })
     if (error) {
-      console.error('头像上传失败:', error)
       alert(`头像上传失败：${error.message}`)
       return null
     }
@@ -93,7 +59,6 @@ export default function SelectUser() {
     if (!avatarFile) { alert('请选择一张头像图片'); return }
     setCreating(true)
 
-    // 先创建 profile（不含头像 URL，使用默认 emoji）
     const { data, error } = await supabase
       .from('profiles')
       .insert({ name: newName.trim() })
@@ -106,15 +71,12 @@ export default function SelectUser() {
       return
     }
 
-    // 上传头像并更新 profile
     setUploading(true)
-    const avatarUrl = await uploadAvatar(data.id)
+    const avatarUrl = await uploadAvatarTo(data.id, avatarFile)
     setUploading(false)
 
     if (avatarUrl) {
-      const { error: updateError } = await supabase
-        .from('profiles').update({ avatar_url: avatarUrl }).eq('id', data.id)
-      if (updateError) console.error('更新头像URL失败:', updateError)
+      await supabase.from('profiles').update({ avatar_url: avatarUrl }).eq('id', data.id)
       data.avatar_url = avatarUrl
     }
 
@@ -137,12 +99,18 @@ export default function SelectUser() {
     navigate('/puzzles')
   }
 
+  /**
+   * 删除指定用户
+   *
+   * 从数据库中删除用户档案，同时更新本地状态移除该用户。
+   *
+   * @async
+   * @param {string} profileId - 要删除的用户 ID
+   * @returns {Promise<void>}
+   */
   async function deleteProfile(profileId) {
     setDeletingProfile(profileId)
-    const { error } = await supabase
-      .from('profiles')
-      .delete()
-      .eq('id', profileId)
+    const { error } = await supabase.from('profiles').delete().eq('id', profileId)
     if (error) {
       alert(`删除失败：${error.message}`)
     } else {
@@ -152,21 +120,14 @@ export default function SelectUser() {
     setDeletingProfile(null)
   }
 
-  function handleDeleteProfile(profileId) {
-    setShowDeleteConfirm(profileId)
-  }
-
-  // 点击"换头像"按钮
   function handleChangeAvatarClick(profileId, e) {
     e.stopPropagation()
     changeAvatarTargetRef.current = profileId
     changeAvatarInputRef.current?.click()
   }
 
-  // 选择新头像文件后立即上传并更新
   async function handleChangeAvatarFile(e) {
     const file = e.target.files?.[0]
-    // 清空 input 值，方便下次选同一文件也能触发
     e.target.value = ''
     const profileId = changeAvatarTargetRef.current
     if (!file || !profileId) return
@@ -177,24 +138,14 @@ export default function SelectUser() {
 
     setChangingAvatarId(profileId)
     try {
-      const ext = file.name.split('.').pop()
-      const path = `${profileId}.${ext}`
-      const { error: upErr } = await supabase.storage
-        .from('avatars')
-        .upload(path, file, { upsert: true, contentType: file.type })
-      if (upErr) {
-        alert(`头像上传失败：${upErr.message}`)
-        return
-      }
-      const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-      const newUrl = urlData.publicUrl + '?t=' + Date.now()
-
-      const { error: updErr } = await supabase
+      const newUrl = await uploadAvatarTo(profileId, file)
+      if (!newUrl) return
+      const { error } = await supabase
         .from('profiles')
         .update({ avatar_url: newUrl })
         .eq('id', profileId)
-      if (updErr) {
-        alert(`更新头像失败：${updErr.message}`)
+      if (error) {
+        alert(`更新头像失败：${error.message}`)
         return
       }
       setProfiles(prev => prev.map(p => p.id === profileId ? { ...p, avatar_url: newUrl } : p))
@@ -208,7 +159,6 @@ export default function SelectUser() {
     <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-center p-6"
       style={{ background: 'linear-gradient(135deg, #fff8ed 0%, #fff3e0 40%, #fce4ec 100%)' }}>
 
-      {/* 换头像隐藏 input */}
       <input
         ref={changeAvatarInputRef}
         type="file"
@@ -240,15 +190,12 @@ export default function SelectUser() {
       {/* 用户列表 */}
       <div className="w-full max-w-sm relative z-10">
         {loading ? (
-          <div className="text-center py-12">
-            <div className="text-4xl animate-float">🌍</div>
-            <p className="text-gray-400 mt-3 text-sm">正在连接谜题星球...</p>
-          </div>
+          <Loading emoji="🌍" text="正在连接谜题星球..." />
         ) : loadError ? (
           <div className="text-center py-10 bg-white/80 rounded-3xl p-6 shadow-sm">
             <div className="text-4xl mb-3">😅</div>
             <p className="text-red-400 mb-4 text-sm">连接失败，请检查配置</p>
-            <button onClick={loadProfiles} className="px-5 py-2 bg-orange-400 text-white rounded-xl text-sm font-semibold">重试</button>
+            <button onClick={reload} className="px-5 py-2 bg-orange-400 text-white rounded-xl text-sm font-semibold">重试</button>
           </div>
         ) : (
           <>
@@ -273,22 +220,18 @@ export default function SelectUser() {
                     </div>
                     <span className="text-xs font-bold text-gray-700 truncate w-full text-center leading-tight">{profile.name}</span>
                   </button>
-                  {/* 换头像按钮（始终可见，兼容手机端） */}
                   <button
                     onClick={(e) => handleChangeAvatarClick(profile.id, e)}
                     disabled={changingAvatarId === profile.id}
                     title="换头像"
-                    aria-label="换头像"
                     className="absolute top-0 left-0 w-7 h-7 rounded-full bg-orange-500 text-white flex items-center justify-center shadow-md hover:bg-orange-600 active:scale-90 transition-all disabled:opacity-50 z-10"
                   >
                     <Camera className="w-3.5 h-3.5" />
                   </button>
-                  {/* 删除按钮（始终可见，兼容手机端） */}
                   <button
-                    onClick={() => handleDeleteProfile(profile.id)}
+                    onClick={() => setShowDeleteConfirm(profile.id)}
                     disabled={deletingProfile === profile.id}
                     title="删除成员"
-                    aria-label="删除成员"
                     className="absolute top-0 right-0 w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center shadow-md hover:bg-red-600 active:scale-90 transition-all disabled:opacity-50 z-10"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -314,43 +257,20 @@ export default function SelectUser() {
         )}
       </div>
 
-      {/* 删除确认弹窗 */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-slide-up">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                <AlertCircle className="text-red-500 w-5 h-5" />
-              </div>
-              <h2 className="text-lg font-black text-gray-800">确认删除</h2>
-            </div>
-            <p className="text-gray-600 text-sm mb-6 leading-relaxed">
-              确定要删除这个成员吗？删除后，该成员的所有谜题、回复和勋章也会被删除，此操作无法撤销。
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowDeleteConfirm(null)}
-                className="flex-1 py-3 rounded-2xl bg-gray-100 text-gray-500 font-semibold hover:bg-gray-200 transition-colors"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => deleteProfile(showDeleteConfirm)}
-                disabled={deletingProfile === showDeleteConfirm}
-                className="flex-1 py-3 rounded-2xl bg-red-500 text-white font-bold hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {deletingProfile === showDeleteConfirm ? '删除中...' : '确认删除'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={!!showDeleteConfirm}
+        title="确认删除"
+        message="确定要删除这个成员吗？删除后，该成员的所有谜题、回复和勋章也会被删除，此操作无法撤销。"
+        confirmText="确认删除"
+        loading={deletingProfile === showDeleteConfirm}
+        onCancel={() => setShowDeleteConfirm(null)}
+        onConfirm={() => deleteProfile(showDeleteConfirm)}
+      />
 
       {/* 创建成员弹窗 */}
       {showCreate && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-slide-up">
-            {/* 弹窗头部 */}
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center">
@@ -364,10 +284,8 @@ export default function SelectUser() {
               </button>
             </div>
 
-            {/* 头像上传区 */}
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">上传头像照片</p>
             <div className="flex items-center gap-4 mb-5">
-              {/* 预览圆形头像 */}
               <div className="relative flex-shrink-0">
                 <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-orange-100 bg-gray-50 flex items-center justify-center">
                   {avatarPreview ? (
@@ -376,7 +294,6 @@ export default function SelectUser() {
                     <User className="w-8 h-8 text-gray-200" />
                   )}
                 </div>
-                {/* 相机图标 */}
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full flex items-center justify-center text-white shadow-md transition-transform active:scale-90"
@@ -386,7 +303,6 @@ export default function SelectUser() {
                 </button>
               </div>
 
-              {/* 点击区域引导文字 */}
               <button
                 onClick={() => fileInputRef.current?.click()}
                 className="flex-1 border-2 border-dashed border-gray-200 rounded-2xl p-3 text-center hover:border-orange-300 hover:bg-orange-50 transition-colors"
@@ -406,7 +322,6 @@ export default function SelectUser() {
               />
             </div>
 
-            {/* 名字输入 */}
             <div className="flex items-center gap-3 mb-5 p-3 bg-orange-50 rounded-2xl">
               <span className="text-lg">✏️</span>
               <input
