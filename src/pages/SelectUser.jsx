@@ -2,7 +2,7 @@ import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createProfile as createProfileInDb, deleteProfile as deleteProfileInDb, updateProfile } from '../lib/db'
 import { useUser } from '../context/UserContext'
-import { Plus, Sparkles, X, Camera, User, Trash2 } from 'lucide-react'
+import { Plus, Sparkles, X, Camera, User, Trash2, Settings } from 'lucide-react'
 import Avatar from '../components/Avatar'
 import ConfirmDialog from '../components/ConfirmDialog'
 import DataMenu from '../components/DataMenu'
@@ -24,6 +24,7 @@ export default function SelectUser() {
   const [deletingProfile, setDeletingProfile] = useState(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(null)
   const [changingAvatarId, setChangingAvatarId] = useState(null)
+  const [showSettings, setShowSettings] = useState(false)
   const fileInputRef = useRef(null)
   const changeAvatarInputRef = useRef(null)
   const changeAvatarTargetRef = useRef(null)
@@ -159,9 +160,18 @@ export default function SelectUser() {
         onChange={handleChangeAvatarFile}
       />
 
-      {/* 数据备份/恢复：收成右上角一个小图标，点开才有选项，避免误触 */}
-      <div className="absolute top-4 right-4 z-20">
+      {/* 右上角功能入口：数据备份 / 家庭设置，都收成小图标避免误触 */}
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
         <DataMenu />
+        <button
+          type="button"
+          onClick={() => setShowSettings(true)}
+          title="家庭设置"
+          aria-label="家庭设置"
+          className="w-8 h-8 rounded-xl bg-white/80 text-gray-400 flex items-center justify-center shadow-sm hover:bg-white hover:text-orange-500 active:scale-95 transition-all"
+        >
+          <Settings className="w-4 h-4" />
+        </button>
       </div>
 
       {/* 背景装饰 */}
@@ -201,7 +211,7 @@ export default function SelectUser() {
             )}
             <div className="grid grid-cols-3 gap-3 mb-4">
               {profiles.map((profile, i) => (
-                <div key={profile.id} className="relative animate-slide-up pt-2 pr-2">
+                <div key={profile.id} className="animate-slide-up">
                   <button
                     onClick={() => handleSelect(profile)}
                     className="flex flex-col items-center p-4 bg-white rounded-2xl shadow-sm hover:shadow-orange transition-all hover:-translate-y-1 active:scale-95 cursor-pointer border-2 border-transparent hover:border-orange-200 w-full"
@@ -216,22 +226,6 @@ export default function SelectUser() {
                       )}
                     </div>
                     <span className="text-xs font-bold text-gray-700 truncate w-full text-center leading-tight">{profile.name}</span>
-                  </button>
-                  <button
-                    onClick={(e) => handleChangeAvatarClick(profile.id, e)}
-                    disabled={changingAvatarId === profile.id}
-                    title="换头像"
-                    className="absolute top-0 left-0 w-7 h-7 rounded-full bg-orange-500 text-white flex items-center justify-center shadow-md hover:bg-orange-600 active:scale-90 transition-all disabled:opacity-50 z-10"
-                  >
-                    <Camera className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={() => setShowDeleteConfirm(profile.id)}
-                    disabled={deletingProfile === profile.id}
-                    title="删除成员"
-                    className="absolute top-0 right-0 w-7 h-7 rounded-full bg-red-500 text-white flex items-center justify-center shadow-md hover:bg-red-600 active:scale-90 transition-all disabled:opacity-50 z-10"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               ))}
@@ -253,6 +247,69 @@ export default function SelectUser() {
           </>
         )}
       </div>
+
+      {/* 家庭设置：换头像和删除成员都收在这里，首页只留干净的头像卡片 */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-3xl p-5 w-full max-w-sm shadow-2xl animate-slide-up">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center">
+                  <Settings className="text-orange-500 w-4 h-4" />
+                </div>
+                <h2 className="text-lg font-black text-gray-800">家庭设置</h2>
+              </div>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition-colors"
+              >
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">成员管理</p>
+            <div className="flex flex-col gap-2 mb-4">
+              {profiles.map((profile) => (
+                <div key={profile.id} className="flex items-center gap-3 p-2.5 bg-gray-50 rounded-2xl">
+                  <div className="w-9 h-9 flex-shrink-0">
+                    <Avatar profile={profile} size="sm" />
+                  </div>
+                  <span className="flex-1 min-w-0 text-sm font-bold text-gray-700 truncate">{profile.name}</span>
+                  <button
+                    onClick={(e) => handleChangeAvatarClick(profile.id, e)}
+                    disabled={changingAvatarId === profile.id}
+                    title="换头像"
+                    className="w-8 h-8 rounded-xl bg-white text-orange-500 flex items-center justify-center shadow-sm hover:bg-orange-50 active:scale-90 transition-all disabled:opacity-50"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => { setShowSettings(false); setShowDeleteConfirm(profile.id) }}
+                    disabled={deletingProfile === profile.id}
+                    title="删除成员"
+                    className="w-8 h-8 rounded-xl bg-white text-red-400 flex items-center justify-center shadow-sm hover:bg-red-50 active:scale-90 transition-all disabled:opacity-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+              {profiles.length === 0 && (
+                <p className="text-center text-gray-400 text-sm py-3">还没有成员</p>
+              )}
+            </div>
+
+            <button
+              onClick={() => { setShowSettings(false); setShowCreate(true) }}
+              className="w-full py-3 rounded-2xl border-2 border-dashed border-orange-200 text-orange-500 text-sm font-bold hover:bg-orange-50 transition-colors flex items-center justify-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              添加成员
+            </button>
+
+            <p className="text-center text-gray-300 text-xs mt-4">数据只保存在这台设备的浏览器里</p>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={!!showDeleteConfirm}
