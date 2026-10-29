@@ -44,25 +44,53 @@ export default function SelectUser() {
 
   // 把选中的图片压缩成小尺寸 JPEG 再转 base64 存进本地。
   // 直接存原图会迅速撑爆 localStorage（容量约 5MB），所以必须先压缩。
-  function compressImage(file, maxSize = 256, quality = 0.85) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const img = new Image()
-        img.onload = () => {
-          const scale = Math.min(1, maxSize / Math.max(img.width, img.height))
-          const canvas = document.createElement('canvas')
-          canvas.width = Math.round(img.width * scale)
-          canvas.height = Math.round(img.height * scale)
-          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
-          resolve(canvas.toDataURL('image/jpeg', quality))
+  //
+  // 手机上的两个坑：
+  // 1. 相机原图动辄 5-10MB，转成 data URL 后字符串巨大，部分移动浏览器会直接解析失败。
+  //    这里改用 createObjectURL / createImageBitmap 解码，不经过 data URL。
+  // 2. iPhone 和部分安卓默认拍 HEIC/HEIF，很多浏览器解不了，这种情况给出明确提示。
+  async function compressImage(file, maxSize = 256, quality = 0.85) {
+    let source = null
+    let objectUrl = null
+
+    try {
+      if (typeof createImageBitmap === 'function') {
+        try {
+          source = await createImageBitmap(file)
+        } catch {
+          // 当前浏览器不支持这个格式，继续用 <img> 兜底
         }
-        img.onerror = () => reject(new Error('图片解析失败'))
-        img.src = reader.result
       }
-      reader.onerror = () => reject(new Error('图片读取失败'))
-      reader.readAsDataURL(file)
-    })
+
+      if (!source) {
+        objectUrl = URL.createObjectURL(file)
+        source = await new Promise((resolve, reject) => {
+          const img = new Image()
+          img.onload = () => resolve(img)
+          img.onerror = () => reject(new Error(describeImageError(file)))
+          img.src = objectUrl
+        })
+      }
+
+      const scale = Math.min(1, maxSize / Math.max(source.width, source.height))
+      const canvas = document.createElement('canvas')
+      canvas.width = Math.max(1, Math.round(source.width * scale))
+      canvas.height = Math.max(1, Math.round(source.height * scale))
+      canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height)
+      return canvas.toDataURL('image/jpeg', quality)
+    } finally {
+      if (source && typeof source.close === 'function') source.close()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }
+
+  // 把解码失败翻译成用户能看懂的原因
+  function describeImageError(file) {
+    const isHeic = /heic|heif/i.test(file.type || '') || /\.(heic|heif)$/i.test(file.name || '')
+    if (isHeic) {
+      return '这张照片是 HEIC/HEIF 格式，当前浏览器无法处理。请在相册里先导出为 JPG 再试'
+    }
+    return '图片无法解析，请换一张 JPG/PNG 格式的照片'
   }
 
   async function createProfile() {
