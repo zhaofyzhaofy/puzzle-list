@@ -5,7 +5,7 @@ import { useUser } from '../context/UserContext'
 import { Plus, Sparkles, X, Camera, User, Trash2 } from 'lucide-react'
 import Avatar from '../components/Avatar'
 import ConfirmDialog from '../components/ConfirmDialog'
-import ImportButton from '../components/ImportButton'
+import DataMenu from '../components/DataMenu'
 import Loading from '../components/Loading'
 import { useProfiles } from '../hooks/useProfiles'
 
@@ -159,6 +159,11 @@ export default function SelectUser() {
         onChange={handleChangeAvatarFile}
       />
 
+      {/* 数据备份/恢复：收成右上角一个小图标，点开才有选项，避免误触 */}
+      <div className="absolute top-4 right-4 z-20">
+        <DataMenu />
+      </div>
+
       {/* 背景装饰 */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden">
         {['🌟', '💫', '✨', '🔮', '🌈', '⭐'].map((e, i) => (
@@ -245,11 +250,6 @@ export default function SelectUser() {
             {profiles.length === 0 && (
               <p className="text-center text-gray-400 text-sm mt-2">还没有成员，点击上面的按钮开始吧！</p>
             )}
-
-            {/* 换设备 / 清缓存后，用备份文件把数据搬回来 */}
-            <div className="text-center mt-7">
-              <ImportButton className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-white/70 text-gray-500 text-xs font-semibold shadow-sm hover:bg-white hover:text-orange-500 transition-colors disabled:opacity-50" />
-            </div>
           </>
         )}
       </div>

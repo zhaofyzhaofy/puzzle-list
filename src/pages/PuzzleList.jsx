@@ -8,7 +8,7 @@ import Avatar from '../components/Avatar'
 import ConfirmDialog from '../components/ConfirmDialog'
 import Loading from '../components/Loading'
 import EmptyState from '../components/EmptyState'
-import ExportButton from '../components/ExportButton'
+import DataMenu from '../components/DataMenu'
 import { StatusBadge } from '../components/CategoryTag'
 import { usePuzzles } from '../hooks/usePuzzles'
 import { useProfiles } from '../hooks/useProfiles'
@@ -77,7 +77,7 @@ export default function PuzzleList() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <ExportButton />
+            <DataMenu />
             <button
               onClick={() => navigate('/badges')}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl font-bold text-sm transition-all hover:-translate-y-0.5 active:scale-95"
